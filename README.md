@@ -22,6 +22,29 @@ running client.
 - The `yaml` treesitter parser (`:TSInstall yaml`), only if you want to use
   `ctx.yaml()` in your selector
 
+## Installation
+
+With [lazy.nvim](https://github.com/folke/lazy.nvim):
+
+```lua
+{
+  "segoon/yaml-schema-selector.nvim",
+  ft = "yaml", -- lazy-load on yaml buffers; setup() only wires into yamlls via LspAttach
+  opts = {
+    -- equivalent to require("yaml-schema-selector").setup({ ... })
+    schemas = {
+      gh_workflow = "https://json.schemastore.org/github-workflow.json",
+    },
+    select = function(ctx)
+      if ctx.path:match("/%.github/workflows/") then
+        return "gh_workflow"
+      end
+      return nil -- fall back to modelines / yaml.schemas / SchemaStore
+    end,
+  },
+},
+```
+
 ## Setup
 
 ```lua
