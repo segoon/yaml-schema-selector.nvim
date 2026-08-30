@@ -2,6 +2,7 @@
 -- answer into a `custom/schema/request` response.
 
 local aliases = require("yaml-schema-selector.aliases")
+local registry = require("yaml-schema-selector.registry")
 local yaml = require("yaml-schema-selector.yaml")
 
 local M = {}
@@ -112,8 +113,9 @@ end
 ---@param cfg yss.Config
 ---@param uri string
 ---@param client vim.lsp.Client
+---@param schemas table<string, string> Merged alias table (cfg.schemas + registered contributions).
 ---@return yss.Context
-function M.build_context(cfg, uri, client)
+function M.build_context(cfg, uri, client, schemas)
   local path = vim.uri_to_fname(uri)
   local bufnr = find_buf(path)
 
@@ -133,7 +135,7 @@ function M.build_context(cfg, uri, client)
     filetype = bufnr and vim.bo[bufnr].filetype or nil,
     root_dir = client.root_dir,
     client_id = client.id,
-    schemas = cfg.schemas,
+    schemas = schemas or cfg.schemas,
     lines = function(n)
       local source = read_source(bufnr, path) or ""
       local lines = vim.split(source, "\n")
@@ -149,29 +151,57 @@ function M.build_context(cfg, uri, client)
   }
 end
 
----Run the user's selector for a document and normalize its answer.
----Always returns something sendable: `vim.NIL` means "no opinion, fall back".
+---Run one registration against a context, normalizing `select` vs
+---`matcher`+`schema` into a single "what did it answer" call.
+---@param entry yss.Registration
+---@param ctx yss.Context
+---@return yss.Selection
+local function run_entry(entry, ctx)
+  if entry.select then
+    return entry.select(ctx)
+  end
+  if entry.matcher(ctx) then
+    if type(entry.schema) == "function" then
+      return entry.schema(ctx)
+    end
+    return entry.schema
+  end
+  return nil
+end
+
+---Run every registered selector for a document, in priority order, and
+---normalize the first non-nil answer. Always returns something sendable:
+---`vim.NIL` means "no opinion, fall back" (to the LSP's own resolution).
 ---@param cfg yss.Config
 ---@param uri string
 ---@param client vim.lsp.Client
 ---@return string|string[]|vim.NIL
 function M.resolve(cfg, uri, client)
-  local ctx = M.build_context(cfg, uri, client)
-
-  local ok, selection = pcall(cfg.select, ctx)
-  if not ok then
-    notify_once("select() failed for " .. ctx.path .. ": " .. tostring(selection))
-    return vim.NIL
-  end
-
+  local schemas = vim.tbl_extend("force", registry.schemas(), cfg.schemas)
+  local ctx = M.build_context(cfg, uri, client, schemas)
   local base_dir = client.root_dir or vim.fs.dirname(ctx.path)
-  local normalized_ok, normalized = pcall(aliases.normalize, selection, cfg.schemas, base_dir)
-  if not normalized_ok then
-    notify_once("could not resolve the schema returned for " .. ctx.path .. ": " .. tostring(normalized))
-    return vim.NIL
+
+  for _, entry in ipairs(registry.sorted()) do
+    local ok, selection = pcall(run_entry, entry, ctx)
+    if not ok then
+      notify_once(("registration %q failed for %s: %s"):format(entry.name, ctx.path, tostring(selection)))
+    elseif selection ~= nil then
+      local normalized_ok, normalized = pcall(aliases.normalize, selection, schemas, base_dir)
+      if not normalized_ok then
+        notify_once(
+          ("registration %q returned an unresolvable schema for %s: %s"):format(
+            entry.name,
+            ctx.path,
+            tostring(normalized)
+          )
+        )
+      elseif normalized ~= vim.NIL then
+        return normalized
+      end
+    end
   end
 
-  return normalized
+  return vim.NIL
 end
 
 return M

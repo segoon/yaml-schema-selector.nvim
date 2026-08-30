@@ -24,14 +24,14 @@ describe("lsp.attach", function()
   end)
 
   it("installs the schema request handler", function()
-    local cfg = config.build({ select = function() end })
+    local cfg = config.build({})
     local client = make_client(1)
     lsp.attach(cfg, client)
     assert.is_function(client.handlers[lsp.SCHEMA_REQUEST])
   end)
 
   it("sends the registration and a didChangeConfiguration notification", function()
-    local cfg = config.build({ select = function() end })
+    local cfg = config.build({})
     local client = make_client(2)
     lsp.attach(cfg, client)
 
@@ -42,19 +42,15 @@ describe("lsp.attach", function()
   end)
 
   it("is a no-op the second time for the same client id", function()
-    local cfg = config.build({ select = function() end })
+    local cfg = config.build({})
     local client = make_client(3)
     assert.is_true(lsp.attach(cfg, client))
     assert.is_false(lsp.attach(cfg, client))
     assert.equals(2, #client._notifications)
   end)
 
-  it("the installed handler returns vim.NIL for a selector that opts out", function()
-    local cfg = config.build({
-      select = function()
-        return nil
-      end,
-    })
+  it("the installed handler returns vim.NIL when no registration matches", function()
+    local cfg = config.build({})
     local client = make_client(4)
     lsp.attach(cfg, client)
 

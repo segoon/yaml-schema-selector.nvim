@@ -14,14 +14,13 @@
 ---@field yaml fun(): table|nil First YAML document as a Lua value. Lazy, memoized.
 ---@field yaml_documents fun(): table[] All `---`-separated documents. Lazy, memoized.
 
----What `select` may return: nil, an alias/URI/path, or a list of them.
+---What a selector may return: nil, an alias/URI/path, or a list of them.
 ---@alias yss.Selection string|string[]|nil
 
 ---@class yss.Config
 ---@field server_name string Name of the LSP client to layer onto.
 ---@field schemas table<string, string> Named aliases mapped to a URI, path or "kubernetes".
 ---@field max_parse_bytes integer Documents larger than this are not parsed by `ctx.yaml()`.
----@field select fun(ctx: yss.Context): yss.Selection Selector function. Required, synchronous.
 
 local M = {}
 
@@ -30,7 +29,6 @@ M.defaults = {
   server_name = "yamlls",
   schemas = {},
   max_parse_bytes = 1024 * 1024,
-  select = nil,
 }
 
 ---Merge user options over the defaults and validate the result.
@@ -45,9 +43,6 @@ function M.build(opts)
 
   local cfg = vim.tbl_deep_extend("force", vim.deepcopy(M.defaults), opts)
 
-  if type(cfg.select) ~= "function" then
-    error("yaml-schema-selector: `select` is required and must be a function", 0)
-  end
   if type(cfg.server_name) ~= "string" or cfg.server_name == "" then
     error("yaml-schema-selector: `server_name` must be a non-empty string", 0)
   end

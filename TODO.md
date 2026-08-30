@@ -1,1 +1,1 @@
-- lazy init config
+- lazy init config, full docs, all options
