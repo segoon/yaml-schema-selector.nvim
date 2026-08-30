@@ -44,6 +44,35 @@ describe("aliases.resolve_one", function()
   end)
 end)
 
+describe("aliases.valid_target", function()
+  it("accepts a bare path", function()
+    assert.is_true(aliases.valid_target("schemas/house.json"))
+  end)
+
+  it("accepts the kubernetes keyword", function()
+    assert.is_true(aliases.valid_target("kubernetes"))
+  end)
+
+  it("accepts a well-formed https URI", function()
+    assert.is_true(aliases.valid_target("https://example.com/s.json"))
+  end)
+
+  it("accepts a file URI with an empty authority", function()
+    assert.is_true(aliases.valid_target("file:///abs/schema.json"))
+  end)
+
+  it("rejects a scheme with nothing after it", function()
+    local ok, err = aliases.valid_target("https://")
+    assert.is_false(ok)
+    assert.is_string(err)
+  end)
+
+  it("rejects a scheme followed only by slashes", function()
+    local ok = aliases.valid_target("https:///")
+    assert.is_false(ok)
+  end)
+end)
+
 describe("aliases.normalize", function()
   local schemas = { gh = "https://example.com/gh.json" }
 

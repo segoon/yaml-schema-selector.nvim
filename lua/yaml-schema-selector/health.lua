@@ -49,12 +49,39 @@ end
 local function check_current_buffer()
   local ok, result = pcall(require("yaml-schema-selector").resolve, 0)
   if not ok then
-    vim.health.error("resolve() failed for the current buffer: " .. tostring(result))
+    vim.health.error("failed to resolve a schema for the current buffer: " .. tostring(result))
   elseif result == nil then
-    vim.health.info("current buffer: no schema selected (the server falls back to its own resolution)")
+    vim.health.info("resolved schema for current buffer: none (the server falls back to its own resolution)")
   else
-    vim.health.info("current buffer: " .. vim.inspect(result))
+    vim.health.info("resolved schema for current buffer: " .. vim.inspect(result))
   end
+end
+
+---@param cfg yss.Config
+local function check_registry(cfg)
+  local registry = require("yaml-schema-selector.registry")
+  local sorted = registry.sorted()
+  local registered_schemas = registry.schemas()
+
+  if #sorted == 0 and vim.tbl_isempty(registered_schemas) and vim.tbl_isempty(cfg.schemas) then
+    vim.health.warn(
+      "no selectors and no schema aliases configured anywhere",
+      { "Nothing can ever answer a schema request; call `register()` or set `schemas` in `setup()`." }
+    )
+    return
+  end
+
+  if #sorted == 0 then
+    vim.health.info("no selectors registered via `register()`")
+  else
+    for _, entry in ipairs(sorted) do
+      local kind = entry.select and "select" or "matcher+schema"
+      vim.health.info(("registered selector %q (priority %d, %s)"):format(entry.name, entry.priority or 50, kind))
+    end
+    vim.health.ok(("%d selector(s) registered"):format(#sorted))
+  end
+
+  vim.health.info(("%d schema alias(es) contributed via `register()`"):format(vim.tbl_count(registered_schemas)))
 end
 
 function M.check()
@@ -78,6 +105,7 @@ function M.check()
   check_treesitter(cfg)
   check_server(cfg)
   check_current_buffer()
+  check_registry(cfg)
 end
 
 return M

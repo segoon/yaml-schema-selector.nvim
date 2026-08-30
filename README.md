@@ -1,5 +1,7 @@
 # yaml-schema-selector.nvim
 
+[![CI](https://github.com/segoon/yaml-schema-selector.nvim/actions/workflows/ci.yml/badge.svg)](https://github.com/segoon/yaml-schema-selector.nvim/actions/workflows/ci.yml)
+
 Pick the JSON Schema `yaml-language-server` uses for a buffer with a Lua
 function, instead of static glob patterns.
 

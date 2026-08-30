@@ -6,6 +6,8 @@
 -- fighting over the single `select` function a caller-owned setup() would
 -- otherwise require.
 
+local aliases = require("yaml-schema-selector.aliases")
+
 local M = {}
 
 ---A registered contribution. Exactly one of `select` or `matcher`+`schema`
@@ -51,8 +53,19 @@ local function validate(spec)
   if spec.priority ~= nil and type(spec.priority) ~= "number" then
     error("yaml-schema-selector.register: `priority` must be a number", 0)
   end
-  if spec.schemas ~= nil and type(spec.schemas) ~= "table" then
-    error("yaml-schema-selector.register: `schemas` must be a table", 0)
+  if spec.schemas ~= nil then
+    if type(spec.schemas) ~= "table" then
+      error("yaml-schema-selector.register: `schemas` must be a table", 0)
+    end
+    for name, value in pairs(spec.schemas) do
+      if type(name) ~= "string" or type(value) ~= "string" then
+        error("yaml-schema-selector.register: `schemas` must map string names to string values", 0)
+      end
+      local ok, err = aliases.valid_target(value)
+      if not ok then
+        error(("yaml-schema-selector.register: `schemas.%s`: %s"):format(name, err), 0)
+      end
+    end
   end
 end
 

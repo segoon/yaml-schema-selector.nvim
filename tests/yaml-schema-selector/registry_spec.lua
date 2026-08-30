@@ -29,6 +29,18 @@ describe("registry.register", function()
     end)
   end)
 
+  it("errors when a schemas value is not a string", function()
+    assert.has_error(function()
+      registry.register({ name = "bad-type", schemas = { a = 1 } })
+    end)
+  end)
+
+  it("errors when a schemas value is a truncated URI", function()
+    assert.has_error(function()
+      registry.register({ name = "bad-uri", schemas = { a = "https://" } })
+    end)
+  end)
+
   it("allows a schemas-only registration", function()
     registry.register({ name = "aliases-only", schemas = { a = "https://example.com/a.json" } })
     assert.same(

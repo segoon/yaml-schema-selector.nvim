@@ -19,6 +19,12 @@ describe("config.build", function()
     end)
   end)
 
+  it("errors when a schemas value is a truncated URI", function()
+    assert.has_error(function()
+      config.build({ schemas = { a = "https://" } })
+    end)
+  end)
+
   it("errors when max_parse_bytes is negative", function()
     assert.has_error(function()
       config.build({ max_parse_bytes = -1 })
