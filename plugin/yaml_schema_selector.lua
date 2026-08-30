@@ -14,7 +14,8 @@ if vim.fn.has("nvim-0.11") == 0 then
 end
 
 -- Explicit setup() call is required; nothing is activated here automatically.
--- Users must call require("yaml-schema-selector").setup({ select = ... }).
+-- Users must call require("yaml-schema-selector").setup({ ... }) and
+-- register at least one selector via require("yaml-schema-selector").register({ ... }).
 
 vim.api.nvim_create_user_command("YamlSchemaRefresh", function()
   require("yaml-schema-selector").refresh()

@@ -35,17 +35,24 @@ With [lazy.nvim](https://github.com/folke/lazy.nvim):
     schemas = {
       gh_workflow = "https://json.schemastore.org/github-workflow.json",
     },
-    select = function(ctx)
-      if ctx.path:match("/%.github/workflows/") then
-        return "gh_workflow"
-      end
-      return nil -- fall back to modelines / yaml.schemas / SchemaStore
-    end,
   },
+  config = function(_, opts)
+    require("yaml-schema-selector").setup(opts)
+    require("yaml-schema-selector").register({
+      name = "gh_workflow",
+      matcher = function(ctx)
+        return ctx.path:match("/%.github/workflows/") ~= nil
+      end,
+      schema = "gh_workflow",
+    })
+  end,
 },
 ```
 
 ## Setup
+
+`setup()` configures the plugin's link to the language server — it does not
+pick any schemas itself:
 
 ```lua
 require("yaml-schema-selector").setup({
@@ -57,26 +64,65 @@ require("yaml-schema-selector").setup({
     house = "./schemas/house.json", -- resolved relative to root_dir
   },
 
+  max_parse_bytes = 1024 * 1024, -- ctx.yaml() gives up above this size
+})
+```
+
+Schema selection itself is done entirely through `register()` (see below) —
+`setup()` has no `select` option. This keeps the two concerns apart: `setup()`
+is something you call once, for yourself; `register()` is something any
+plugin, including your own config, can call at any time to contribute a rule,
+without needing to know whether `setup()` has run yet.
+
+## Registering selectors
+
+```lua
+require("yaml-schema-selector").register({
+  name = "k8s",              -- unique id; re-registering the same name replaces it
+  priority = 50,              -- higher runs first; ties broken by registration order (default: 50)
+
+  -- Full form: gets the whole `ctx`, decides everything itself.
   select = function(ctx)
-    -- Content-driven: works no matter where the file lives.
     local doc = ctx.yaml()
     if doc and doc.apiVersion and doc.kind then
       return "k8s"
     end
-
-    -- Path-driven.
-    if ctx.path:match("/%.github/workflows/") then
-      return "gh_workflow"
-    end
-
-    -- nil: fall back to modelines / yaml.schemas / SchemaStore.
-    return nil
+    return nil -- no opinion, let the next registration (or the server) decide
   end,
+})
+
+require("yaml-schema-selector").register({
+  name = "gh_workflow",
+  -- Short form: a predicate plus a fixed (or computed) answer.
+  matcher = function(ctx)
+    return ctx.path:match("/%.github/workflows/") ~= nil
+  end,
+  schema = "gh_workflow", -- or a function(ctx) -> yss.Selection
+
+  -- Registrations may also contribute their own aliases, merged into the
+  -- shared alias table (cfg.schemas from setup() always wins on conflict).
+  schemas = { gh_workflow = "https://json.schemastore.org/github-workflow.json" },
 })
 ```
 
-`select` must be **synchronous** — it runs inside the handler for the
-server's `custom/schema/request`, which cannot be answered asynchronously.
+Give either `select`, or `matcher` + `schema` — not both. A registration with
+only `schemas` (no `select`/`matcher`) is also valid, for plugins that just
+want to contribute aliases.
+
+`require("yaml-schema-selector").unregister(name)` removes a registration; a
+no-op if it was never registered. Safe to call from `:so %` during
+development to avoid piling up duplicate entries under the same name (though
+re-registering the same `name` already replaces the previous one).
+
+Resolution runs every registration in priority order (highest first, ties by
+registration order) and uses the first one that returns non-nil; a `select`
+that returns nil, or a `matcher` that doesn't match, just falls through to
+the next registration, and eventually to the server's own resolution chain
+(modelines / `yaml.schemas` / SchemaStore) if nothing matches.
+
+`select`/`matcher` must be **synchronous** — resolution runs inside the
+handler for the server's `custom/schema/request`, which cannot be answered
+asynchronously.
 
 ### `ctx` fields
 
@@ -89,14 +135,15 @@ server's `custom/schema/request`, which cannot be answered asynchronously.
 | `filetype` | `string?` | buffer filetype, or `nil` if not loaded |
 | `root_dir` | `string?` | root directory of the LSP client |
 | `client_id` | `integer` | id of the `yamlls` client |
-| `schemas` | `table<string,string>` | the configured alias table |
+| `schemas` | `table<string,string>` | the merged alias table (`setup()`'s `schemas` + every registration's `schemas`) |
 | `lines(n?)` | `fun(n?): string[]` | first `n` lines (default: all), lazy |
 | `yaml()` | `fun(): table?` | first YAML document as a Lua value, lazy |
 | `yaml_documents()` | `fun(): table[]` | all `---`-separated documents, lazy |
 
-`select` may return `nil`, a single value, or a list of values. Each value is
-either a key of `schemas`, a full URI, a filesystem path (absolute, `~`-
-relative, or relative to `root_dir`), or the literal string `"kubernetes"`.
+A `select`, or the `schema` given alongside a `matcher`, may be `nil`, a
+single value, or a list of values. Each value is either a key of `schemas`, a
+full URI, a filesystem path (absolute, `~`-relative, or relative to
+`root_dir`), or the literal string `"kubernetes"`.
 
 ### `ctx.yaml()` limitations
 
@@ -116,16 +163,20 @@ implementation:
 ## Commands
 
 - `:YamlSchemaRefresh` — ask the server to re-resolve the schema for every
-  open document. Useful when something your `select` function depends on
+  open document. Useful when something a registered selector depends on
   changed outside of Neovim.
 
 ## Lua API
 
 - `require("yaml-schema-selector").setup(opts)`
+- `require("yaml-schema-selector").register(spec)` — see
+  [Registering selectors](#registering-selectors).
+- `require("yaml-schema-selector").unregister(name)`
 - `require("yaml-schema-selector").refresh()`
-- `require("yaml-schema-selector").resolve(bufnr?)` — run `select` for a
-  buffer and return the normalized result, without going through the server;
-  mainly useful for debugging (see also `:checkhealth yaml-schema-selector`).
+- `require("yaml-schema-selector").resolve(bufnr?)` — run every registration
+  for a buffer and return the normalized result, without going through the
+  server; mainly useful for debugging (see also
+  `:checkhealth yaml-schema-selector`).
 
 ## How it works
 

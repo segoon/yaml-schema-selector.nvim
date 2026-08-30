@@ -1,5 +1,6 @@
 local selector = require("yaml-schema-selector.selector")
 local config = require("yaml-schema-selector.config")
+local registry = require("yaml-schema-selector.registry")
 
 local function has_parser()
   return pcall(vim.treesitter.get_string_parser, "a: b", "yaml")
@@ -41,28 +42,87 @@ end)
 describe("selector.resolve", function()
   before_each(function()
     selector.reset()
+    registry.reset()
   end)
 
-  it("returns vim.NIL when select returns nil", function()
+  it("returns vim.NIL when nothing is registered", function()
     local bufnr, _, uri = make_buffer({ "a: 1" })
-    local cfg = config.build({ select = function() end })
+    local cfg = config.build({})
+    assert.equals(vim.NIL, selector.resolve(cfg, uri, fake_client))
+    vim.api.nvim_buf_delete(bufnr, { force = true })
+  end)
+
+  it("returns vim.NIL when the registered select returns nil", function()
+    local bufnr, _, uri = make_buffer({ "a: 1" })
+    registry.register({ name = "noop", select = function() end })
+    local cfg = config.build({})
     assert.equals(vim.NIL, selector.resolve(cfg, uri, fake_client))
     vim.api.nvim_buf_delete(bufnr, { force = true })
   end)
 
   it("passes the selection through the alias table", function()
     local bufnr, _, uri = make_buffer({ "a: 1" })
-    local cfg = config.build({
+    registry.register({
+      name = "gh",
       select = function()
         return "gh"
       end,
-      schemas = { gh = "https://example.com/gh.json" },
     })
+    local cfg = config.build({ schemas = { gh = "https://example.com/gh.json" } })
     assert.equals("https://example.com/gh.json", selector.resolve(cfg, uri, fake_client))
     vim.api.nvim_buf_delete(bufnr, { force = true })
   end)
 
-  it("returns vim.NIL and notifies once when select throws repeatedly", function()
+  it("uses matcher+schema registrations", function()
+    local bufnr, _, uri = make_buffer({ "a: 1" })
+    registry.register({
+      name = "gh",
+      matcher = function(ctx)
+        return ctx.path:match("%.yaml$") ~= nil
+      end,
+      schema = "https://example.com/gh.json",
+    })
+    local cfg = config.build({})
+    assert.equals("https://example.com/gh.json", selector.resolve(cfg, uri, fake_client))
+    vim.api.nvim_buf_delete(bufnr, { force = true })
+  end)
+
+  it("falls through to the next registration by priority when one opts out", function()
+    local bufnr, _, uri = make_buffer({ "a: 1" })
+    registry.register({
+      name = "high",
+      priority = 100,
+      select = function()
+        return nil
+      end,
+    })
+    registry.register({
+      name = "low",
+      priority = 10,
+      select = function()
+        return "low-wins"
+      end,
+    })
+    local cfg = config.build({ schemas = { ["low-wins"] = "https://example.com/low.json" } })
+    assert.equals("https://example.com/low.json", selector.resolve(cfg, uri, fake_client))
+    vim.api.nvim_buf_delete(bufnr, { force = true })
+  end)
+
+  it("merges schemas contributed via registrations with cfg.schemas winning on conflict", function()
+    local bufnr, _, uri = make_buffer({ "a: 1" })
+    registry.register({
+      name = "contrib",
+      schemas = { gh = "https://from-registry.example.com/gh.json" },
+      select = function()
+        return "gh"
+      end,
+    })
+    local cfg = config.build({ schemas = { gh = "https://from-setup.example.com/gh.json" } })
+    assert.equals("https://from-setup.example.com/gh.json", selector.resolve(cfg, uri, fake_client))
+    vim.api.nvim_buf_delete(bufnr, { force = true })
+  end)
+
+  it("returns vim.NIL and notifies once when a select throws repeatedly", function()
     local bufnr, _, uri = make_buffer({ "a: 1" })
     local calls = 0
     local orig_notify = vim.notify
@@ -70,11 +130,13 @@ describe("selector.resolve", function()
       calls = calls + 1
     end
 
-    local cfg = config.build({
+    registry.register({
+      name = "boom",
       select = function()
         error("boom")
       end,
     })
+    local cfg = config.build({})
     assert.equals(vim.NIL, selector.resolve(cfg, uri, fake_client))
     assert.equals(vim.NIL, selector.resolve(cfg, uri, fake_client))
 
@@ -86,12 +148,14 @@ describe("selector.resolve", function()
   it("gives select a working ctx.path and ctx.root_dir", function()
     local bufnr, path, uri = make_buffer({ "a: 1" })
     local seen
-    local cfg = config.build({
+    registry.register({
+      name = "see",
       select = function(ctx)
         seen = ctx
         return nil
       end,
     })
+    local cfg = config.build({})
     selector.resolve(cfg, uri, fake_client)
     assert.equals(path, seen.path)
     assert.equals("/root", seen.root_dir)
@@ -103,12 +167,14 @@ describe("selector.resolve", function()
     it("exposes the parsed document through ctx.yaml()", function()
       local bufnr, _, uri = make_buffer({ "kind: Service" })
       local seen
-      local cfg = config.build({
+      registry.register({
+        name = "see",
         select = function(ctx)
           seen = ctx.yaml()
           return nil
         end,
       })
+      local cfg = config.build({})
       selector.resolve(cfg, uri, fake_client)
       assert.same({ kind = "Service" }, seen)
       vim.api.nvim_buf_delete(bufnr, { force = true })
@@ -116,11 +182,13 @@ describe("selector.resolve", function()
 
     it("does not parse when ctx.yaml() is never called", function()
       local bufnr, _, uri = make_buffer({ "not: [valid: yaml: at: all" })
-      local cfg = config.build({
+      registry.register({
+        name = "noop",
         select = function()
           return nil
         end,
       })
+      local cfg = config.build({})
       -- Would error while parsing if parsing happened eagerly; it must not.
       assert.equals(vim.NIL, selector.resolve(cfg, uri, fake_client))
       vim.api.nvim_buf_delete(bufnr, { force = true })
@@ -129,13 +197,14 @@ describe("selector.resolve", function()
     it("returns nil for a buffer larger than max_parse_bytes", function()
       local bufnr, _, uri = make_buffer({ "a: 1" })
       local seen
-      local cfg = config.build({
-        max_parse_bytes = 1,
+      registry.register({
+        name = "see",
         select = function(ctx)
           seen = ctx.yaml()
           return nil
         end,
       })
+      local cfg = config.build({ max_parse_bytes = 1 })
       selector.resolve(cfg, uri, fake_client)
       assert.is_nil(seen)
       vim.api.nvim_buf_delete(bufnr, { force = true })

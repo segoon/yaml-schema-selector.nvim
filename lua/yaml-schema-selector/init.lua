@@ -5,6 +5,7 @@
 
 local config = require("yaml-schema-selector.config")
 local lsp = require("yaml-schema-selector.lsp")
+local registry = require("yaml-schema-selector.registry")
 local selector = require("yaml-schema-selector.selector")
 
 local M = {}
@@ -18,6 +19,20 @@ function M.setup(opts)
   M.config = config.build(opts)
   selector.reset()
   lsp.setup(M.config)
+end
+
+---Register a schema selector, a set of schema aliases, or both.
+---Safe to call at any time, independent of `setup()` -- other plugins can
+---call this from their own `setup()`/init, regardless of load order.
+---@param spec yss.Registration
+function M.register(spec)
+  registry.register(spec)
+end
+
+---Remove a previously registered entry, if any. A no-op otherwise.
+---@param name string
+function M.unregister(name)
+  registry.unregister(name)
 end
 
 ---@return yss.Config
