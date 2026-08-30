@@ -12,6 +12,20 @@ local RESERVED = {
 ---Matches an absolute URI such as `https://…`, `file://…`.
 local URI_PATTERN = "^%a[%w+.%-]*://"
 
+---Structural sanity check for a schema alias/URI value. Only rejects absolute
+---URIs with no host/path after the scheme (a common copy-paste-truncation);
+---plain paths are never rejected since any string is a legal path segment.
+---@param value string
+---@return boolean ok
+---@return string|nil err
+function M.valid_target(value)
+  local rest = value:match(URI_PATTERN .. "(.*)$")
+  if rest and rest:gsub("^/+", "") == "" then
+    return false, ("%q is not a valid URI: missing host/path after the scheme"):format(value)
+  end
+  return true
+end
+
 ---Resolve a single value: alias lookup, then URI passthrough, then path handling.
 ---
 ---Alias substitution happens exactly once: the substituted value is never looked

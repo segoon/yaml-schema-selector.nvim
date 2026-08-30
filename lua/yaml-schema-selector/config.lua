@@ -1,5 +1,7 @@
 -- Configuration defaults and validation for yaml-schema-selector.nvim.
 
+local aliases = require("yaml-schema-selector.aliases")
+
 ---Context handed to the user's `select` function.
 ---@class yss.Context
 ---@field uri string Document URI as sent by the language server.
@@ -52,6 +54,10 @@ function M.build(opts)
   for name, value in pairs(cfg.schemas) do
     if type(name) ~= "string" or type(value) ~= "string" then
       error("yaml-schema-selector: `schemas` must map string names to string values", 0)
+    end
+    local ok, err = aliases.valid_target(value)
+    if not ok then
+      error(("yaml-schema-selector: `schemas.%s`: %s"):format(name, err), 0)
     end
   end
   if type(cfg.max_parse_bytes) ~= "number" or cfg.max_parse_bytes < 0 then
