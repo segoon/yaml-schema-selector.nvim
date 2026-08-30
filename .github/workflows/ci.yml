@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  # ─── Lint & Format ──────────────────────────────────────────────────────────
+  lint:
+    name: Lint & Format
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install luacheck
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y luarocks
+          sudo luarocks install luacheck
+
+      - name: Run luacheck
+        run: luacheck lua/ plugin/ tests/
+
+      - name: Check formatting (StyLua)
+        uses: JohnnyMorganz/stylua-action@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          version: latest
+          args: --check lua/ plugin/ tests/
+
+  # ─── Tests ──────────────────────────────────────────────────────────────────
+  test:
+    name: Test (Neovim ${{ matrix.neovim }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        neovim:
+          - stable
+          - nightly
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Neovim (${{ matrix.neovim }})
+        uses: rhysd/action-setup-vim@v1
+        with:
+          neovim: true
+          version: ${{ matrix.neovim }}
+
+      - name: Clone plenary.nvim
+        run: git clone --depth=1 https://github.com/nvim-lua/plenary.nvim .tests/plenary.nvim
+
+      - name: Clone nvim-treesitter and install the yaml parser
+        run: |
+          git clone --depth=1 https://github.com/nvim-treesitter/nvim-treesitter .tests/nvim-treesitter
+          nvim --headless \
+            -c "set rtp+=.tests/nvim-treesitter" \
+            -c "runtime plugin/nvim-treesitter.lua" \
+            -c "TSInstallSync! yaml" \
+            -c "qa!"
+
+      - name: Run tests
+        run: make test

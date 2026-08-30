@@ -19,7 +19,11 @@ vim.cmd("runtime plugin/plenary.vim")
 -- Pick up an externally installed `yaml` treesitter parser (e.g. from
 -- nvim-treesitter in the user's normal config), since this minimal init does
 -- not manage one itself. Parsing tests are skipped when none is found.
-for _, site in ipairs({ vim.fn.stdpath("data") .. "/site", "~/.local/share/nvim/site" }) do
+for _, site in ipairs({
+  vim.fn.stdpath("data") .. "/site",
+  "~/.local/share/nvim/site",
+  root .. "/.tests/nvim-treesitter",
+}) do
   site = vim.fn.expand(site)
   if vim.fn.isdirectory(site .. "/parser") == 1 then
     vim.opt.rtp:append(site)
