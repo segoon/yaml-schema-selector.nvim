@@ -1,0 +1,170 @@
+*yaml-schema-selector.nvim.txt*   Content-driven schema selection for yamlls
+
+Author: segoon
+License: MIT
+
+==============================================================================
+TABLE OF CONTENTS                              *yaml-schema-selector-contents*
+
+    1. Introduction .......................... |yaml-schema-selector-intro|
+    2. Requirements .......................... |yaml-schema-selector-requirements|
+    3. Setup .................................. |yaml-schema-selector-setup|
+    4. Context ................................ |yaml-schema-selector-context|
+    5. Commands ............................... |yaml-schema-selector-commands|
+    6. Lua API ................................ |yaml-schema-selector-api|
+    7. How it works ........................... |yaml-schema-selector-internals|
+    8. Health check ........................... |yaml-schema-selector-health|
+
+==============================================================================
+1. INTRODUCTION                                    *yaml-schema-selector-intro*
+
+yaml-schema-selector.nvim picks the JSON Schema `yaml-language-server` uses
+for a buffer by calling a Lua function you provide, instead of relying only
+on static glob patterns, a modeline, or the SchemaStore catalog.
+
+It works by registering as the server's custom schema provider: for every
+YAML document the server resolves, it asks the client (this plugin) which
+schema applies, and your answer wins over `yaml.schemas`, the SchemaStore
+catalog, and `json/schemaAssociations` associations.
+
+This plugin never starts or configures `yaml-language-server` itself. It
+only layers a handler onto an already-running client.
+
+==============================================================================
+2. REQUIREMENTS                              *yaml-schema-selector-requirements*
+
+  - Neovim >= 0.11
+  - `yaml-language-server`, started and attached to the buffer however you
+    normally do that (e.g. `nvim-lspconfig`'s `yamlls`, or manually with
+    |vim.lsp.enable()| / |vim.lsp.start()|)
+  - The `yaml` treesitter parser (`:TSInstall yaml`), only required if your
+    `select` function calls `ctx.yaml()` / `ctx.yaml_documents()`
+
+==============================================================================
+3. SETUP                                            *yaml-schema-selector-setup*
+
+>lua
+    require("yaml-schema-selector").setup({
+      server_name = "yamlls", -- name of the LSP client to layer onto (default)
+
+      schemas = {
+        gh_workflow = "https://json.schemastore.org/github-workflow.json",
+        k8s = "kubernetes",             -- yaml-language-server's own k8s handling
+        house = "./schemas/house.json", -- resolved relative to root_dir
+      },
+
+      max_parse_bytes = 1024 * 1024, -- ctx.yaml() gives up above this size
+
+      select = function(ctx)
+        local doc = ctx.yaml()
+        if doc and doc.apiVersion and doc.kind then
+          return "k8s"
+        end
+        if ctx.path:match("/%.github/workflows/") then
+          return "gh_workflow"
+        end
+        return nil -- fall back to modelines / yaml.schemas / SchemaStore
+      end,
+    })
+<
+`select` is required and must be a plain, synchronous function: it runs
+inside the handler for the server's `custom/schema/request`, which cannot be
+answered asynchronously.
+
+It may return:
+  - `nil`, meaning "no opinion" (the server falls back to its own chain);
+  - a single value; or
+  - a list of values.
+
+Each value is one of:
+  - a key of the `schemas` table (substituted exactly once — no alias
+    chains, so cycles are impossible);
+  - a full URI (`https://...`, `file://...`);
+  - a filesystem path, absolute, `~`-relative, or relative to `root_dir`;
+  - the literal string `"kubernetes"`.
+
+==============================================================================
+4. CONTEXT                                        *yaml-schema-selector-context*
+
+The table passed to `select`:
+
+    uri                 document URI as sent by the server
+    path                absolute filesystem path
+    filename            basename of `path`
+    bufnr               buffer handle, or `nil` if not loaded
+    filetype            buffer filetype, or `nil` if not loaded
+    root_dir            root directory of the LSP client, or `nil`
+    client_id           id of the `yamlls` client
+    schemas             the configured alias table
+    lines(n?)           first `n` lines (default: all); lazy
+    yaml()              first YAML document as a Lua value, or `nil`; lazy
+    yaml_documents()    all `---`-separated documents as Lua values; lazy
+
+`yaml()` / `yaml_documents()` parse with the `yaml` treesitter grammar. This
+is a lightweight parse, not a full YAML 1.2 implementation:
+  - a key whose value is null or empty (`foo:`, `foo: ~`, `foo: null`) is
+    left out of the resulting table entirely, so `doc.foo and doc.foo.bar`
+    guards behave as expected;
+  - anchors, aliases, and merge keys (`<<:`) are not resolved;
+  - parsing is skipped, and these functions return `nil` / `{}`, for buffers
+    over `max_parse_bytes`, and when the `yaml` parser isn't installed.
+
+Parsing is memoized per buffer and change, so calling `yaml()` from `select`
+costs nothing on repeated validations of an unchanged buffer, and nothing at
+all if `select` never calls it.
+
+==============================================================================
+5. COMMANDS                                      *yaml-schema-selector-commands*
+
+                                                          *:YamlSchemaRefresh*
+:YamlSchemaRefresh
+    Ask the server to re-resolve the schema for every open document. Useful
+    when something your `select` function depends on changed outside of
+    Neovim (e.g. a file `select` reads from disk).
+
+==============================================================================
+6. LUA API                                            *yaml-schema-selector-api*
+
+require("yaml-schema-selector").setup({opts})       *yaml-schema-selector.setup()*
+    Configure the plugin and attach to any running (or future) client named
+    `opts.server_name`. See |yaml-schema-selector-setup|.
+
+require("yaml-schema-selector").refresh()          *yaml-schema-selector.refresh()*
+    Equivalent of |:YamlSchemaRefresh|.
+
+require("yaml-schema-selector").resolve({bufnr})   *yaml-schema-selector.resolve()*
+    Run `select` for {bufnr} (default: current buffer) and return the
+    normalized schema value(s) that would be sent to the server, or `nil`.
+    Does not talk to the server; a debugging aid, and the basis of
+    |:checkhealth|.
+
+==============================================================================
+7. HOW IT WORKS                                *yaml-schema-selector-internals*
+
+On `setup()`, and on every `LspAttach` of a client named `server_name`
+(`yamlls` by default), the plugin:
+
+  1. installs a handler for the server's `custom/schema/request`;
+  2. sends the `yaml/registerCustomSchemaRequest` notification, which makes
+     the server register the client as its schema provider;
+  3. sends `workspace/didChangeConfiguration`, so documents opened before
+     registration get re-validated with the provider in the loop.
+
+Schema resolution precedence, per the server's own documentation, highest
+first: modeline > inline `$schema:` > custom provider (this plugin) >
+`yaml.disableSchemaDetection` > `yaml.schemas` > `json/schemaAssociations` >
+SchemaStore.
+
+==============================================================================
+8. HEALTH CHECK                                    *yaml-schema-selector-health*
+
+`:checkhealth yaml-schema-selector` reports:
+  - Neovim version support;
+  - whether `setup()` has been called;
+  - whether the `yaml` treesitter parser is available;
+  - whether `yaml-language-server` is on `$PATH`;
+  - whether a client named `server_name` is running, and whether the schema
+    provider handler is installed on it;
+  - what `select` returns for the current buffer.
+
+vim:tw=78:ts=8:ft=help:norl:

@@ -1,0 +1,61 @@
+-- yaml-schema-selector.nvim
+--
+-- Picks the JSON Schema for a YAML buffer with a Lua function, by acting as the
+-- yaml-language-server's custom schema provider.
+
+local config = require("yaml-schema-selector.config")
+local lsp = require("yaml-schema-selector.lsp")
+local selector = require("yaml-schema-selector.selector")
+
+local M = {}
+
+---@type yss.Config|nil
+M.config = nil
+
+---Configure the plugin and layer onto the language server.
+---@param opts table|nil See |yaml-schema-selector-config|.
+function M.setup(opts)
+  M.config = config.build(opts)
+  selector.reset()
+  lsp.setup(M.config)
+end
+
+---@return yss.Config
+local function require_config()
+  if not M.config then
+    error("yaml-schema-selector: setup() has not been called", 0)
+  end
+  return M.config
+end
+
+---Force the language server to re-resolve the schema of every open document.
+---Call this when something the selector depends on changed outside of Neovim.
+function M.refresh()
+  local cfg = require_config()
+  for _, client in ipairs(lsp.clients(cfg)) do
+    lsp.revalidate(client)
+  end
+end
+
+---Run the selector for a buffer and return the schema that would be sent.
+---Returns `nil` when no schema would be chosen. Debugging aid; also used by
+---|:checkhealth|.
+---@param bufnr integer|nil Defaults to the current buffer.
+---@return string|string[]|nil
+function M.resolve(bufnr)
+  local cfg = require_config()
+  bufnr = (bufnr == nil or bufnr == 0) and vim.api.nvim_get_current_buf() or bufnr
+
+  local client = lsp.clients(cfg)[1]
+  if not client then
+    return nil
+  end
+
+  local result = selector.resolve(cfg, vim.uri_from_bufnr(bufnr), client)
+  if result == vim.NIL then
+    return nil
+  end
+  return result
+end
+
+return M
