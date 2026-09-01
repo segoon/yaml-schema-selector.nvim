@@ -4,6 +4,7 @@
 -- yaml-language-server's custom schema provider.
 
 local config = require("yaml-schema-selector.config")
+local discover = require("yaml-schema-selector.discover")
 local lsp = require("yaml-schema-selector.lsp")
 local registry = require("yaml-schema-selector.registry")
 local selector = require("yaml-schema-selector.selector")
@@ -17,6 +18,9 @@ M.config = nil
 ---@param opts table|nil See |yaml-schema-selector-config|.
 function M.setup(opts)
   M.config = config.build(opts)
+  if M.config.discover then
+    discover.discover()
+  end
   selector.reset()
   lsp.setup(M.config)
 end
@@ -33,6 +37,14 @@ end
 ---@param name string
 function M.unregister(name)
   registry.unregister(name)
+end
+
+---Re-scan 'runtimepath' for lua/yaml-schema-selector/schemas/**/*.lua files
+---and (re-)register what they return. Called automatically by `setup()` when
+---`opts.discover` is true (the default); exposed here for manual reload
+---(e.g. from `:so %` during development) regardless of that flag.
+function M.discover()
+  discover.discover()
 end
 
 ---@return yss.Config

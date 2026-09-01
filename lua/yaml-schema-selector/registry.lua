@@ -86,6 +86,13 @@ function M.unregister(name)
   order[name] = nil
 end
 
+---Look up a single registered entry by name, or nil.
+---@param name string
+---@return yss.Registration|nil
+function M.get(name)
+  return entries[name]
+end
+
 ---Registered entries with a `select`/`matcher`, sorted by priority (higher
 ---first), ties broken by registration order.
 ---@return yss.Registration[]
