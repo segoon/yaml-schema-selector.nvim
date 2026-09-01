@@ -24,13 +24,13 @@ local function remove_rtp_dir(dir)
 end
 
 ---The plugin's own repo root is always on rtp during tests (see
----tests/minimal_init.lua) and ships built-in openapi/swagger selectors
----(lua/yaml-schema-selector/schemas/{openapi,swagger}.lua), so every real
+---tests/minimal_init.lua) and ships built-in c35/openapi/swagger selectors
+---(lua/yaml-schema-selector/schemas/{c35,openapi,swagger}.lua), so every real
 ---discover() run picks them up alongside whatever fixtures a test adds.
 ---@param extra table<string, true>
 ---@return table<string, true>
 local function with_builtins(extra)
-  return vim.tbl_extend("force", { openapi = true, swagger = true }, extra)
+  return vim.tbl_extend("force", { c35 = true, openapi = true, swagger = true }, extra)
 end
 
 describe("discover.discover", function()

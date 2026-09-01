@@ -41,6 +41,8 @@ only layers a handler onto an already-running client.
     |vim.lsp.enable()| / |vim.lsp.start()|)
   - The `yaml` treesitter parser (`:TSInstall yaml`), only required if a
     registered selector calls `ctx.yaml()` / `ctx.yaml_documents()`
+  - For the built-in C35 selector only: `arc`, `ya`, and the Python
+    environment provided by `ya tool tt python`
 
 ==============================================================================
 3. SETUP                                            *yaml-schema-selector-setup*
@@ -165,6 +167,23 @@ If two 'runtimepath' entries provide the same relative path (e.g. two
 plugins both ship `schemas/foo.lua`), only the first one found is loaded;
 the second is reported as an error (visible via |:checkhealth|) rather than
 silently overriding or being silently skipped.
+
+BUILT-IN SELECTORS
+
+The plugin ships content-based selectors for OpenAPI 3.x and Swagger 2.0.
+It also recognizes Arcadia C35 files named exactly `codegen-module.yaml` and
+builds their schema from the `codegen-plugin.yaml` files referenced by the
+module's top-level plugin paths.
+
+The C35 generator runs asynchronously through `ya tool tt python`, using the
+module's directory as the working directory so `arc root` selects the right
+checkout. Until generation completes, selection falls through to the next
+selector and then to the server. Successful schemas are stored as
+content-addressed JSON files below Neovim's cache directory, after which the
+server is asked to resolve schemas again. Saving `codegen-module.yaml`
+invalidates and regenerates its schema. To pick up a change made only to a
+referenced `codegen-plugin.yaml`, use |:YamlSchemaRefresh| or save the module
+file again.
 
 ==============================================================================
 6. CONTEXT                                        *yaml-schema-selector-context*
