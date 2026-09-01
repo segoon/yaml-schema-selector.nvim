@@ -23,6 +23,7 @@ local aliases = require("yaml-schema-selector.aliases")
 ---@field server_name string Name of the LSP client to layer onto.
 ---@field schemas table<string, string> Named aliases mapped to a URI, path or "kubernetes".
 ---@field max_parse_bytes integer Documents larger than this are not parsed by `ctx.yaml()`.
+---@field discover boolean Autodiscover lua/yaml-schema-selector/schemas/**/*.lua on 'runtimepath'. Default: true.
 
 local M = {}
 
@@ -31,6 +32,7 @@ M.defaults = {
   server_name = "yamlls",
   schemas = {},
   max_parse_bytes = 1024 * 1024,
+  discover = true,
 }
 
 ---Merge user options over the defaults and validate the result.
@@ -62,6 +64,9 @@ function M.build(opts)
   end
   if type(cfg.max_parse_bytes) ~= "number" or cfg.max_parse_bytes < 0 then
     error("yaml-schema-selector: `max_parse_bytes` must be a non-negative number", 0)
+  end
+  if type(cfg.discover) ~= "boolean" then
+    error("yaml-schema-selector: `discover` must be a boolean", 0)
   end
 
   return cfg

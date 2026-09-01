@@ -67,6 +67,8 @@ require("yaml-schema-selector").setup({
   },
 
   max_parse_bytes = 1024 * 1024, -- ctx.yaml() gives up above this size
+
+  discover = true, -- autodiscover lua/yaml-schema-selector/schemas/**/*.lua (default)
 })
 ```
 
@@ -162,6 +164,38 @@ implementation:
   `max_parse_bytes` (default 1 MiB), and when the `yaml` parser isn't
   installed.
 
+## Autodiscovery
+
+Any file matching `lua/yaml-schema-selector/schemas/**/*.lua` on `runtimepath`
+is registered automatically — no explicit `register()` call needed. This lets
+a plugin ship its own selector for its own file format bundled inside its own
+repo, the same way lazy.nvim discovers `lua/plugins/*.lua`:
+
+```lua
+-- lua/yaml-schema-selector/schemas/kubernetes.lua
+return {
+  matcher = function(ctx)
+    return ctx.filename:match("%.k8s%.ya?ml$") ~= nil
+  end,
+  schema = "kubernetes",
+}
+```
+
+Each file returns a single `yss.Registration` table, or a list of them — the
+same shape `register()` takes. If `name` is omitted it defaults to the file's
+path relative to `schemas/`, with `/` becoming `.` and `.lua` stripped (e.g.
+`schemas/kubernetes.lua` → `"kubernetes"`, `schemas/helm/values.lua` →
+`"helm.values"`); unnamed entries in a list returned from one file get `#1`,
+`#2`, ... suffixed onto that default.
+
+`setup()` runs discovery once, unless `discover = false` is set. Call
+`require("yaml-schema-selector").discover()` to re-scan manually (e.g. after
+`:so %` during development, or after a plugin manager adds more plugins to
+`runtimepath`); it also cleans up any previously discovered entry whose
+source file has since disappeared. `:checkhealth yaml-schema-selector` lists
+which registered selectors came from autodiscovery, and reports any file that
+failed to load.
+
 ## Commands
 
 - `:YamlSchemaRefresh` — ask the server to re-resolve the schema for every
@@ -174,6 +208,8 @@ implementation:
 - `require("yaml-schema-selector").register(spec)` — see
   [Registering selectors](#registering-selectors).
 - `require("yaml-schema-selector").unregister(name)`
+- `require("yaml-schema-selector").discover()` — see
+  [Autodiscovery](#autodiscovery).
 - `require("yaml-schema-selector").refresh()`
 - `require("yaml-schema-selector").resolve(bufnr?)` — run every registration
   for a buffer and return the normalized result, without going through the

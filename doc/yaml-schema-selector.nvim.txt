@@ -10,11 +10,12 @@ TABLE OF CONTENTS                              *yaml-schema-selector-contents*
     2. Requirements .......................... |yaml-schema-selector-requirements|
     3. Setup .................................. |yaml-schema-selector-setup|
     4. Registering selectors .................. |yaml-schema-selector-register|
-    5. Context ................................ |yaml-schema-selector-context|
-    6. Commands ............................... |yaml-schema-selector-commands|
-    7. Lua API ................................ |yaml-schema-selector-api|
-    8. How it works ........................... |yaml-schema-selector-internals|
-    9. Health check ........................... |yaml-schema-selector-health|
+    5. Autodiscovery ........................... |yaml-schema-selector-discover|
+    6. Context ................................ |yaml-schema-selector-context|
+    7. Commands ............................... |yaml-schema-selector-commands|
+    8. Lua API ................................ |yaml-schema-selector-api|
+    9. How it works ........................... |yaml-schema-selector-internals|
+    10. Health check ........................... |yaml-schema-selector-health|
 
 ==============================================================================
 1. INTRODUCTION                                    *yaml-schema-selector-intro*
@@ -127,7 +128,41 @@ Each value is one of:
   - the literal string `"kubernetes"`.
 
 ==============================================================================
-5. CONTEXT                                        *yaml-schema-selector-context*
+5. AUTODISCOVERY                                  *yaml-schema-selector-discover*
+
+Any file matching `lua/yaml-schema-selector/schemas/**/*.lua` on
+'runtimepath' is registered automatically -- no explicit `register()` call
+needed. This lets a plugin ship its own selector for its own file format
+bundled inside its own repo, the same way lazy.nvim discovers
+`lua/plugins/*.lua`:
+
+>lua
+    -- lua/yaml-schema-selector/schemas/kubernetes.lua
+    return {
+      matcher = function(ctx)
+        return ctx.filename:match("%.k8s%.ya?ml$") ~= nil
+      end,
+      schema = "kubernetes",
+    }
+<
+Each file returns a single |yaml-schema-selector-register| table, or a list
+of them. If `name` is omitted it defaults to the file's path relative to
+`schemas/`, with `/` becoming `.` and `.lua` stripped (e.g.
+`schemas/kubernetes.lua` -> `"kubernetes"`, `schemas/helm/values.lua` ->
+`"helm.values"`); unnamed entries in a list returned from one file get `#1`,
+`#2`, ... suffixed onto that default.
+
+`setup()` runs discovery once, unless `discover = false` is set.
+`require("yaml-schema-selector").discover()` re-scans manually (e.g. after
+`:so %` during development, or after a plugin manager adds more plugins to
+'runtimepath'); it also unregisters any previously discovered entry whose
+source file has since disappeared, without touching entries registered
+directly via `register()`. See |yaml-schema-selector-health| for how to
+inspect which selectors came from autodiscovery, and any file that failed to
+load.
+
+==============================================================================
+6. CONTEXT                                        *yaml-schema-selector-context*
 
 The table passed to `select`/`matcher`:
 
@@ -158,7 +193,7 @@ registered selector costs nothing on repeated validations of an unchanged
 buffer, and nothing at all if it's never called.
 
 ==============================================================================
-6. COMMANDS                                      *yaml-schema-selector-commands*
+7. COMMANDS                                      *yaml-schema-selector-commands*
 
                                                           *:YamlSchemaRefresh*
 :YamlSchemaRefresh
@@ -167,7 +202,7 @@ buffer, and nothing at all if it's never called.
     Neovim (e.g. a file it reads from disk).
 
 ==============================================================================
-7. LUA API                                            *yaml-schema-selector-api*
+8. LUA API                                            *yaml-schema-selector-api*
 
 require("yaml-schema-selector").setup({opts})       *yaml-schema-selector.setup()*
     Configure the plugin and attach to any running (or future) client named
@@ -181,6 +216,12 @@ require("yaml-schema-selector").register({spec})  *yaml-schema-selector.register
 require("yaml-schema-selector").unregister({name}) *yaml-schema-selector.unregister()*
     Remove a previously registered entry, if any. A no-op otherwise.
 
+require("yaml-schema-selector").discover()         *yaml-schema-selector.discover()*
+    Re-scan 'runtimepath' for lua/yaml-schema-selector/schemas/**/*.lua files
+    and (re-)register what they return. Called automatically by `setup()`
+    when `opts.discover` is true (the default). See
+    |yaml-schema-selector-discover|.
+
 require("yaml-schema-selector").refresh()          *yaml-schema-selector.refresh()*
     Equivalent of |:YamlSchemaRefresh|.
 
@@ -191,7 +232,7 @@ require("yaml-schema-selector").resolve({bufnr})   *yaml-schema-selector.resolve
     |:checkhealth|.
 
 ==============================================================================
-8. HOW IT WORKS                                *yaml-schema-selector-internals*
+9. HOW IT WORKS                                *yaml-schema-selector-internals*
 
 On `setup()`, and on every `LspAttach` of a client named `server_name`
 (`yamlls` by default), the plugin:
@@ -208,7 +249,7 @@ first: modeline > inline `$schema:` > custom provider (this plugin) >
 SchemaStore.
 
 ==============================================================================
-9. HEALTH CHECK                                    *yaml-schema-selector-health*
+10. HEALTH CHECK                                    *yaml-schema-selector-health*
 
 `:checkhealth yaml-schema-selector` reports:
   - Neovim version support;
@@ -217,6 +258,9 @@ SchemaStore.
   - whether `yaml-language-server` is on `$PATH`;
   - whether a client named `server_name` is running, and whether the schema
     provider handler is installed on it;
-  - what resolution returns for the current buffer.
+  - what resolution returns for the current buffer;
+  - which registered selectors were contributed by autodiscovery, and
+    whether any autodiscovered file failed to load (see
+    |yaml-schema-selector-discover|).
 
 vim:tw=78:ts=8:ft=help:norl:

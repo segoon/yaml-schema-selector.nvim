@@ -60,8 +60,10 @@ end
 ---@param cfg yss.Config
 local function check_registry(cfg)
   local registry = require("yaml-schema-selector.registry")
+  local discover = require("yaml-schema-selector.discover")
   local sorted = registry.sorted()
   local registered_schemas = registry.schemas()
+  local discovered = discover.discovered()
 
   if #sorted == 0 and vim.tbl_isempty(registered_schemas) and vim.tbl_isempty(cfg.schemas) then
     vim.health.warn(
@@ -74,14 +76,31 @@ local function check_registry(cfg)
   if #sorted == 0 then
     vim.health.info("no selectors registered via `register()`")
   else
+    local via_discovery = 0
     for _, entry in ipairs(sorted) do
+      local tag = discovered[entry.name] and " [discovered]" or ""
+      if discovered[entry.name] then
+        via_discovery = via_discovery + 1
+      end
       local kind = entry.select and "select" or "matcher+schema"
-      vim.health.info(("registered selector %q (priority %d, %s)"):format(entry.name, entry.priority or 50, kind))
+      vim.health.info(
+        ("registered selector %q (priority %d, %s)%s"):format(entry.name, entry.priority or 50, kind, tag)
+      )
     end
-    vim.health.ok(("%d selector(s) registered"):format(#sorted))
+    vim.health.ok(("%d selector(s) registered (%d via autodiscovery)"):format(#sorted, via_discovery))
   end
 
   vim.health.info(("%d schema alias(es) contributed via `register()`"):format(vim.tbl_count(registered_schemas)))
+
+  local discover_errors = discover.errors()
+  if #discover_errors > 0 then
+    local lines = vim.tbl_map(function(e)
+      return ("%s: %s"):format(e.file, e.err)
+    end, discover_errors)
+    vim.health.error(("%d autodiscovered file(s) failed to load"):format(#discover_errors), lines)
+  else
+    vim.health.ok("all autodiscovered files loaded without error")
+  end
 end
 
 function M.check()
