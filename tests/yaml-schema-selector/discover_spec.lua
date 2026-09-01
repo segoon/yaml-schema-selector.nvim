@@ -23,6 +23,16 @@ local function remove_rtp_dir(dir)
   vim.fn.delete(dir, "rf")
 end
 
+---The plugin's own repo root is always on rtp during tests (see
+---tests/minimal_init.lua) and ships built-in openapi/swagger selectors
+---(lua/yaml-schema-selector/schemas/{openapi,swagger}.lua), so every real
+---discover() run picks them up alongside whatever fixtures a test adds.
+---@param extra table<string, true>
+---@return table<string, true>
+local function with_builtins(extra)
+  return vim.tbl_extend("force", { openapi = true, swagger = true }, extra)
+end
+
 describe("discover.discover", function()
   local dirs
 
@@ -54,7 +64,7 @@ describe("discover.discover", function()
     })
     discover.discover()
     assert.is_not_nil(registry.get("kubernetes"))
-    assert.same({ kubernetes = true }, discover.discovered())
+    assert.same(with_builtins({ kubernetes = true }), discover.discovered())
   end)
 
   it("derives a dotted name from a nested path", function()
@@ -114,7 +124,7 @@ describe("discover.discover", function()
       ["nothing.lua"] = [[return nil]],
     })
     discover.discover()
-    assert.same({}, discover.discovered())
+    assert.same(with_builtins({}), discover.discovered())
     assert.equals(1, #discover.errors())
   end)
 
@@ -146,7 +156,7 @@ describe("discover.discover", function()
 
     discover.discover()
     assert.is_nil(registry.get("gone"))
-    assert.same({}, discover.discovered())
+    assert.same(with_builtins({}), discover.discovered())
   end)
 
   it("preserves a manual registration that reused a since-vanished discovered name", function()
@@ -180,7 +190,7 @@ describe("discover.discover", function()
       ]],
     })
     discover.discover()
-    assert.same({ one = true }, discover.discovered())
+    assert.same(with_builtins({ one = true }), discover.discovered())
 
     add({
       ["two.lua"] = [[
@@ -188,7 +198,7 @@ describe("discover.discover", function()
       ]],
     })
     discover.discover()
-    assert.same({ one = true, two = true }, discover.discovered())
+    assert.same(with_builtins({ one = true, two = true }), discover.discovered())
   end)
 
   it("records a duplicate-path error and keeps the first when two rtp entries collide", function()

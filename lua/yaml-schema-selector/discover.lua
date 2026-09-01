@@ -61,12 +61,16 @@ function M.discover()
 
   for _, path in ipairs(files) do
     local modname = modname_from_path(path)
+    local real_path = vim.fn.resolve(vim.fn.fnamemodify(path, ":p"))
+    -- A modname seen before with the same real path means the same file was
+    -- reached twice through different rtp entries (e.g. a relative "." entry
+    -- and its absolute equivalent); not a real collision, so it's ignored.
     if not modname then
       record_error(path, "could not derive a module name from this path")
-    elseif seen_modnames[modname] then
+    elseif seen_modnames[modname] and seen_modnames[modname] ~= real_path then
       record_error(path, ("duplicate module name %q also provided by %s"):format(modname, seen_modnames[modname]))
-    else
-      seen_modnames[modname] = path
+    elseif not seen_modnames[modname] then
+      seen_modnames[modname] = real_path
       package.loaded[modname] = nil
       local ok, result = pcall(require, modname)
       if not ok then
