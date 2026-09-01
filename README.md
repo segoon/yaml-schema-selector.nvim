@@ -201,31 +201,6 @@ both ship `schemas/foo.lua`), only the first one found is loaded; the second
 is reported as an error (visible via `:checkhealth`) rather than silently
 overriding or being silently skipped.
 
-### Built-in selectors
-
-The plugin ships two selectors of its own at
-`lua/yaml-schema-selector/schemas/{openapi,swagger}.lua`, autodiscovered like
-any other — on by default, no configuration needed:
-
-| name | matches when | schema |
-|---|---|---|
-| `openapi` | `openapi` is a `"3.0.x"` or `"3.1.x"` string | the matching upstream `OAI/OpenAPI-Specification` schema (3.0 or 3.1) |
-| `swagger` | `swagger` is `"2.0"` | the upstream `OAI/OpenAPI-Specification` v2.0 schema |
-
-Both are content-based (via `ctx.yaml()`), not filename patterns. To replace
-one, `unregister()` it and `register()` your own:
-
-```lua
-require("yaml-schema-selector").unregister("openapi")
-require("yaml-schema-selector").register({ name = "openapi", ... })
-```
-
-or turn off autodiscovery entirely with `discover = false` in `setup()` and
-register everything yourself. (Dropping a same-named file at
-`lua/yaml-schema-selector/schemas/openapi.lua` in your own config does *not*
-reliably override the built-in — it hits the path-collision behavior above,
-and which file wins depends on `runtimepath` order.)
-
 ## Commands
 
 - `:YamlSchemaRefresh` — ask the server to re-resolve the schema for every
