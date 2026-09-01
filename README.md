@@ -196,6 +196,11 @@ source file has since disappeared. `:checkhealth yaml-schema-selector` lists
 which registered selectors came from autodiscovery, and reports any file that
 failed to load.
 
+If two `runtimepath` entries provide the same relative path (e.g. two plugins
+both ship `schemas/foo.lua`), only the first one found is loaded; the second
+is reported as an error (visible via `:checkhealth`) rather than silently
+overriding or being silently skipped.
+
 ## Commands
 
 - `:YamlSchemaRefresh` — ask the server to re-resolve the schema for every

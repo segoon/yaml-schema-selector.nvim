@@ -161,6 +161,11 @@ directly via `register()`. See |yaml-schema-selector-health| for how to
 inspect which selectors came from autodiscovery, and any file that failed to
 load.
 
+If two 'runtimepath' entries provide the same relative path (e.g. two
+plugins both ship `schemas/foo.lua`), only the first one found is loaded;
+the second is reported as an error (visible via |:checkhealth|) rather than
+silently overriding or being silently skipped.
+
 ==============================================================================
 6. CONTEXT                                        *yaml-schema-selector-context*
 
