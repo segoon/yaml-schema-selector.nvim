@@ -8,6 +8,6 @@ return {
   end,
   schema = "swagger_2_0",
   schemas = {
-    swagger_2_0 = "https://raw.githubusercontent.com/OAI/OpenAPI-Specification/main/schemas/v2.0/schema.json",
+    swagger_2_0 = "https://spec.openapis.org/oas/2.0/schema/2017-08-27",
   },
 }

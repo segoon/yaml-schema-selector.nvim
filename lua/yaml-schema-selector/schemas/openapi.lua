@@ -16,7 +16,7 @@ return {
     return "openapi_3_0"
   end,
   schemas = {
-    openapi_3_0 = "https://raw.githubusercontent.com/OAI/OpenAPI-Specification/main/schemas/v3.0/schema.json",
-    openapi_3_1 = "https://raw.githubusercontent.com/OAI/OpenAPI-Specification/main/schemas/v3.1/schema.json",
+    openapi_3_0 = "https://www.schemastore.org/openapi-3.X.json",
+    openapi_3_1 = "https://www.schemastore.org/openapi-3.X.json",
   },
 }
