@@ -54,10 +54,7 @@ describe("c35 selector", function()
     local ctx = context("/arc/service/codegen-module.yaml")
     assert.is_nil(c35.schema(ctx))
     assert.equals(1, #jobs)
-    assert.same(
-      { "ya", "tool", "tt", "python", "/plugin/generate-c35-cmy-schema.py", ctx.path },
-      jobs[1].command
-    )
+    assert.same({ "ya", "tool", "tt", "python", "/plugin/generate-c35-cmy-schema.py", ctx.path }, jobs[1].command)
     assert.equals("/arc/service", jobs[1].opts.cwd)
 
     jobs[1].callback({ code = 0, stdout = "schema", stderr = "" })

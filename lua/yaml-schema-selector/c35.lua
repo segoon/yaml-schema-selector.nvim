@@ -158,10 +158,7 @@ local function start(state)
       local detail = (result.stderr or ""):gsub("%s+$", "")
       fail(
         state,
-        ("failed to generate a C35 schema for %s%s"):format(
-          state.ctx.path,
-          detail == "" and "" or ": " .. detail
-        )
+        ("failed to generate a C35 schema for %s%s"):format(state.ctx.path, detail == "" and "" or ": " .. detail)
       )
       return
     end
