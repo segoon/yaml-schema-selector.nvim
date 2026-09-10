@@ -59,9 +59,10 @@ end
 ---Call this when something the selector depends on changed outside of Neovim.
 function M.refresh()
   local cfg = require_config()
-  -- C35 schemas depend on files other than the selected buffer, so their
-  -- cache cannot be invalidated from a buffer changedtick alone.
-  require("yaml-schema-selector.schemas.c35").invalidate_all()
+  -- Give registered selectors a chance to invalidate state a buffer
+  -- changedtick can't reach on its own (e.g. schemas generated from files
+  -- other than the buffer itself).
+  registry.refresh()
   for _, client in ipairs(lsp.clients(cfg)) do
     lsp.revalidate(client)
   end

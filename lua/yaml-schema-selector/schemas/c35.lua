@@ -282,6 +282,7 @@ function M.set_dependencies(overrides)
 end
 
 M.matcher = M.matches
+M.refresh = M.invalidate_all
 
 M.setup()
 
