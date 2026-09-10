@@ -2,12 +2,20 @@
 -- client. Nothing here starts or configures the server.
 
 local selector = require("yaml-schema-selector.selector")
+local status_cache = require("yaml-schema-selector.status_cache")
 
 local M = {}
 
 ---The server->client request the language server sends once a custom schema
 ---provider has been registered.
 M.SCHEMA_REQUEST = "custom/schema/request"
+
+---Fired as a `User` autocmd every time the server asks for a schema and gets
+---an answer (or definitively doesn't). `data` is
+---`{ bufnr, uri, path, schema, source }`; `schema`/`source` are `nil` when no
+---registration answered. Also the point at which the `statusline()` cache is
+---updated, so consumers may prefer reading that over listening here.
+M.RESOLVED_EVENT = "YamlSchemaResolved"
 
 ---The notification that makes the server register us as its schema provider.
 M.REGISTER_NOTIFICATION = "yaml/registerCustomSchemaRequest"
@@ -47,7 +55,22 @@ function M.attach(cfg, client)
     if not uri then
       return vim.NIL
     end
-    return selector.resolve(cfg, uri, client)
+
+    local detailed = selector.resolve_detailed(cfg, uri, client)
+    local schema = nil
+    if detailed.schema ~= vim.NIL then
+      schema = detailed.schema
+    end
+    local path = vim.uri_to_fname(uri)
+    local bufnr = selector.find_buf(path)
+
+    local data = { bufnr = bufnr, uri = uri, path = path, schema = schema, source = detailed.source }
+    if bufnr then
+      status_cache.set(bufnr, { schema = schema, source = detailed.source, uri = uri, path = path })
+    end
+    vim.api.nvim_exec_autocmds("User", { pattern = M.RESOLVED_EVENT, data = data })
+
+    return detailed.schema
   end
 
   client:notify(M.REGISTER_NOTIFICATION, vim.empty_dict())

@@ -108,6 +108,7 @@ local function find_buf(path)
   end
   return nil
 end
+M.find_buf = find_buf
 
 ---Assemble the context table for a document.
 ---@param cfg yss.Config
@@ -169,15 +170,25 @@ local function run_entry(entry, ctx)
   return nil
 end
 
+---Alias table merged from `setup()`'s `schemas` and every registration's
+---`schemas`, `setup()`'s values winning on conflict. Shared by resolution and
+---by the public introspection API so both apply the same precedence rule.
+---@param cfg yss.Config
+---@return table<string, string>
+function M.merged_schemas(cfg)
+  return vim.tbl_extend("force", registry.schemas(), cfg.schemas)
+end
+
 ---Run every registered selector for a document, in priority order, and
 ---normalize the first non-nil answer. Always returns something sendable:
 ---`vim.NIL` means "no opinion, fall back" (to the LSP's own resolution).
+---Also reports which registration's answer was used, for introspection.
 ---@param cfg yss.Config
 ---@param uri string
 ---@param client vim.lsp.Client
----@return string|string[]|vim.NIL
-function M.resolve(cfg, uri, client)
-  local schemas = vim.tbl_extend("force", registry.schemas(), cfg.schemas)
+---@return { schema: string|string[]|vim.NIL, source: string|nil }
+function M.resolve_detailed(cfg, uri, client)
+  local schemas = M.merged_schemas(cfg)
   local ctx = M.build_context(cfg, uri, client, schemas)
   local base_dir = client.root_dir or vim.fs.dirname(ctx.path)
 
@@ -196,12 +207,23 @@ function M.resolve(cfg, uri, client)
           )
         )
       elseif normalized ~= vim.NIL then
-        return normalized
+        return { schema = normalized, source = entry.name }
       end
     end
   end
 
-  return vim.NIL
+  return { schema = vim.NIL, source = nil }
+end
+
+---Run every registered selector for a document, in priority order, and
+---normalize the first non-nil answer. Always returns something sendable:
+---`vim.NIL` means "no opinion, fall back" (to the LSP's own resolution).
+---@param cfg yss.Config
+---@param uri string
+---@param client vim.lsp.Client
+---@return string|string[]|vim.NIL
+function M.resolve(cfg, uri, client)
+  return M.resolve_detailed(cfg, uri, client).schema
 end
 
 return M

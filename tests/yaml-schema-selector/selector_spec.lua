@@ -163,6 +163,48 @@ describe("selector.resolve", function()
     vim.api.nvim_buf_delete(bufnr, { force = true })
   end)
 
+  describe("selector.resolve_detailed", function()
+    it("reports the source of a select-based registration", function()
+      local bufnr, _, uri = make_buffer({ "a: 1" })
+      registry.register({
+        name = "gh",
+        select = function()
+          return "https://example.com/gh.json"
+        end,
+      })
+      local cfg = config.build({})
+      local detailed = selector.resolve_detailed(cfg, uri, fake_client)
+      assert.equals("https://example.com/gh.json", detailed.schema)
+      assert.equals("gh", detailed.source)
+      vim.api.nvim_buf_delete(bufnr, { force = true })
+    end)
+
+    it("reports the source of a matcher-based registration", function()
+      local bufnr, _, uri = make_buffer({ "a: 1" })
+      registry.register({
+        name = "gh",
+        matcher = function()
+          return true
+        end,
+        schema = "https://example.com/gh.json",
+      })
+      local cfg = config.build({})
+      local detailed = selector.resolve_detailed(cfg, uri, fake_client)
+      assert.equals("https://example.com/gh.json", detailed.schema)
+      assert.equals("gh", detailed.source)
+      vim.api.nvim_buf_delete(bufnr, { force = true })
+    end)
+
+    it("reports a nil source when nothing matches", function()
+      local bufnr, _, uri = make_buffer({ "a: 1" })
+      local cfg = config.build({})
+      local detailed = selector.resolve_detailed(cfg, uri, fake_client)
+      assert.equals(vim.NIL, detailed.schema)
+      assert.is_nil(detailed.source)
+      vim.api.nvim_buf_delete(bufnr, { force = true })
+    end)
+  end)
+
   if has_parser() then
     it("exposes the parsed document through ctx.yaml()", function()
       local bufnr, _, uri = make_buffer({ "kind: Service" })

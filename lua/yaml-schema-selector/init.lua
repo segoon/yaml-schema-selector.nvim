@@ -8,6 +8,7 @@ local discover = require("yaml-schema-selector.discover")
 local lsp = require("yaml-schema-selector.lsp")
 local registry = require("yaml-schema-selector.registry")
 local selector = require("yaml-schema-selector.selector")
+local status_cache = require("yaml-schema-selector.status_cache")
 
 local M = {}
 
@@ -22,6 +23,7 @@ function M.setup(opts)
     discover.discover()
   end
   selector.reset()
+  status_cache.reset()
   lsp.setup(M.config)
 end
 
@@ -87,6 +89,109 @@ function M.resolve(bufnr)
     return nil
   end
   return result
+end
+
+---@class yss.Status
+---@field schema string|string[]|nil The resolved schema, or nil if nothing matched.
+---@field source string|nil Name of the registration that answered, or nil.
+---@field uri string Document URI.
+---@field path string Absolute filesystem path of the document.
+
+---Like `resolve()`, but also reports which registration answered. Runs the
+---full selector chain every call (including `ctx.yaml()` parsing) -- a
+---debugging aid, not something to call on every redraw. For that, see
+---`statusline()`.
+---@param bufnr integer|nil Defaults to the current buffer.
+---@return yss.Status
+function M.status(bufnr)
+  local cfg = require_config()
+  bufnr = (bufnr == nil or bufnr == 0) and vim.api.nvim_get_current_buf() or bufnr
+  local uri = vim.uri_from_bufnr(bufnr)
+
+  local client = lsp.clients(cfg)[1]
+  if not client then
+    return { schema = nil, source = nil, uri = uri, path = vim.uri_to_fname(uri) }
+  end
+
+  local detailed = selector.resolve_detailed(cfg, uri, client)
+  local schema = nil
+  if detailed.schema ~= vim.NIL then
+    schema = detailed.schema
+  end
+  return {
+    schema = schema,
+    source = detailed.source,
+    uri = uri,
+    path = vim.uri_to_fname(uri),
+  }
+end
+
+---@class yss.RegistrationInfo
+---@field name string
+---@field priority integer
+---@field kind "select"|"matcher"
+---@field discovered boolean Whether this entry came from autodiscovery.
+
+---Currently registered selectors, sorted by priority (highest first). A
+---read-only summary for introspection (statuslines, pickers, etc.) -- does
+---not expose the underlying functions. See also `:checkhealth`.
+---@return yss.RegistrationInfo[]
+function M.registrations()
+  local discovered = discover.discovered()
+  local out = {}
+  for _, entry in ipairs(registry.sorted()) do
+    out[#out + 1] = {
+      name = entry.name,
+      priority = entry.priority or 50,
+      kind = entry.select and "select" or "matcher",
+      discovered = discovered[entry.name] == true,
+    }
+  end
+  return out
+end
+
+---The merged schema alias table: `setup()`'s `schemas` plus every
+---registration's `schemas`, `setup()`'s values winning on conflict.
+---@return table<string, string>
+function M.schemas()
+  return selector.merged_schemas(require_config())
+end
+
+---@class yss.StatuslineInfo
+---@field schema string|string[]|nil
+---@field source string|nil
+---@field label string Short display label: alias name, else basename, else the raw schema.
+
+---Cheap, cache-only view of the last resolution for a buffer -- safe to call
+---from a statusline redraw, unlike `status()`/`resolve()`. Returns nil until
+---the server has actually asked for (and gotten an answer to) this buffer's
+---schema at least once.
+---@param bufnr integer|nil Defaults to the current buffer.
+---@return yss.StatuslineInfo|nil
+function M.statusline(bufnr)
+  bufnr = (bufnr == nil or bufnr == 0) and vim.api.nvim_get_current_buf() or bufnr
+  local entry = status_cache.get(bufnr)
+  if not entry then
+    return nil
+  end
+
+  local label
+  if type(entry.schema) == "string" then
+    local schemas = M.config and selector.merged_schemas(M.config) or {}
+    for alias, value in pairs(schemas) do
+      if value == entry.schema then
+        label = alias
+        break
+      end
+    end
+    label = label or vim.fs.basename(entry.schema)
+  elseif type(entry.schema) == "table" then
+    label = tostring(#entry.schema) .. " schemas"
+  else
+    label = ""
+  end
+
+  return { schema = entry.schema, source = entry.source, label = label }
 end
 
 return M
