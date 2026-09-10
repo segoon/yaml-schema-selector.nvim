@@ -61,7 +61,7 @@ function M.refresh()
   local cfg = require_config()
   -- C35 schemas depend on files other than the selected buffer, so their
   -- cache cannot be invalidated from a buffer changedtick alone.
-  require("yaml-schema-selector.c35").invalidate_all()
+  require("yaml-schema-selector.schemas.c35").invalidate_all()
   for _, client in ipairs(lsp.clients(cfg)) do
     lsp.revalidate(client)
   end
