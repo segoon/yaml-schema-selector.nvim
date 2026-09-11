@@ -72,14 +72,14 @@ end
 ---@param output string
 ---@return string uri
 local function default_cache(output)
-  -- Validate before exposing the file to yaml-language-server. The decoded
-  -- value is deliberately unused; successful decoding is the contract here.
-  vim.json.decode(output)
+  -- Normalize the generator output so writefile() cannot translate embedded
+  -- newlines to NUL bytes and escaped Unicode is stored as readable UTF-8.
+  local encoded = vim.json.encode(vim.json.decode(output))
 
   local cache_dir = vim.fs.joinpath(vim.fn.stdpath("cache"), CACHE_SUBDIR)
   vim.fn.mkdir(cache_dir, "p")
-  local path = vim.fs.joinpath(cache_dir, vim.fn.sha256(output) .. ".json")
-  local ok, result = pcall(vim.fn.writefile, { output }, path)
+  local path = vim.fs.joinpath(cache_dir, vim.fn.sha256(encoded) .. ".json")
+  local ok, result = pcall(vim.fn.writefile, { encoded }, path, "b")
   if not ok or result ~= 0 then
     error(("failed to write %s: %s"):format(path, ok and "writefile returned " .. result or result), 0)
   end
