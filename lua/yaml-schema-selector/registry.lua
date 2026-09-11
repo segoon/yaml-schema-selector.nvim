@@ -19,6 +19,7 @@ local M = {}
 ---@field matcher fun(ctx: yss.Context): any Predicate; paired with `schema`.
 ---@field schema yss.Selection|fun(ctx: yss.Context): yss.Selection|nil Answer used when `matcher` returns truthy.
 ---@field schemas table<string, string>|nil Alias contributions merged into the shared alias table.
+---@field refresh fun()|nil Called by `M.refresh()` to invalidate state a buffer changedtick can't reach.
 
 ---@type table<string, yss.Registration>
 local entries = {}
@@ -40,6 +41,9 @@ local function validate(spec)
   end
   if spec.matcher ~= nil and type(spec.matcher) ~= "function" then
     error("yaml-schema-selector.register: `matcher` must be a function", 0)
+  end
+  if spec.refresh ~= nil and type(spec.refresh) ~= "function" then
+    error("yaml-schema-selector.register: `refresh` must be a function", 0)
   end
   if (spec.matcher ~= nil) ~= (spec.schema ~= nil) then
     error("yaml-schema-selector.register: `matcher` and `schema` must be given together", 0)
@@ -140,6 +144,16 @@ function M.schemas()
     end
   end
   return merged
+end
+
+---Call every registered entry's `refresh`, if any. Used to invalidate
+---selector-owned state that a buffer changedtick can't reach on its own.
+function M.refresh()
+  for _, spec in pairs(entries) do
+    if spec.refresh then
+      spec.refresh()
+    end
+  end
 end
 
 ---Forget all registrations. Used by tests.

@@ -1,4 +1,4 @@
-local c35 = require("yaml-schema-selector.c35")
+local c35 = require("yaml-schema-selector.schemas.c35")
 
 local function context(path)
   return {

@@ -225,6 +225,26 @@ the module file again.
   open document. Useful when something a registered selector depends on
   changed outside of Neovim.
 
+## Events
+
+Every time the server actually asks for a schema and gets an answer (or
+definitively doesn't), the plugin fires a `User` autocmd:
+
+```lua
+vim.api.nvim_create_autocmd("User", {
+  pattern = "YamlSchemaResolved",
+  callback = function(args)
+    -- args.data = { bufnr, uri, path, schema, source }
+    -- schema/source are nil when no registration answered.
+  end,
+})
+```
+
+This fires only as often as the server re-validates a document (open, save,
+etc.) — not on every keystroke — so it's safe to do real work in the
+callback. This is also the point at which the `statusline()` cache (below)
+is updated.
+
 ## Lua API
 
 - `require("yaml-schema-selector").setup(opts)`
@@ -238,6 +258,39 @@ the module file again.
   for a buffer and return the normalized result, without going through the
   server; mainly useful for debugging (see also
   `:checkhealth yaml-schema-selector`).
+- `require("yaml-schema-selector").status(bufnr?)` — like `resolve()`, but
+  returns `{ schema, source, uri, path }`, where `source` is the name of the
+  registration that answered (`nil` if none did). Same cost as `resolve()`
+  (runs the full selector chain) — a debugging aid, not for a redraw loop.
+- `require("yaml-schema-selector").registrations()` — a read-only summary of
+  every registered selector: `{ name, priority, kind, discovered }[]`, sorted
+  by priority. Does not include `schemas`-only registrations.
+- `require("yaml-schema-selector").schemas()` — the merged alias table
+  (`setup()`'s `schemas` plus every registration's `schemas`).
+- `require("yaml-schema-selector").statusline(bufnr?)` — see
+  [Statusline integration](#statusline-integration).
+
+## Statusline integration
+
+`resolve()`/`status()` re-run the full selector chain (including
+`ctx.yaml()` parsing) on every call, which is fine for occasional debugging
+but not for something a statusline redraws many times a second.
+`statusline(bufnr?)` instead reads a cache populated as a side effect of the
+plugin's real resolutions (the same data the `YamlSchemaResolved` event
+carries) — no parsing, no re-running selectors:
+
+```lua
+-- lualine.nvim component
+function()
+  local s = require("yaml-schema-selector").statusline(0)
+  return s and s.label or ""
+end
+```
+
+It returns `nil` until the server has resolved a schema for that buffer at
+least once. Otherwise: `{ schema, source, label }`, where `label` is a short
+display string — the alias name if the schema matches one in `schemas()`,
+otherwise the basename of the schema URI/path.
 
 ## How it works
 

@@ -29,6 +29,12 @@ describe("registry.register", function()
     end)
   end)
 
+  it("errors when refresh is not a function", function()
+    assert.has_error(function()
+      registry.register({ name = "bad-refresh", schemas = { a = "https://example.com/a.json" }, refresh = "nope" })
+    end)
+  end)
+
   it("errors when a schemas value is not a string", function()
     assert.has_error(function()
       registry.register({ name = "bad-type", schemas = { a = 1 } })
@@ -109,6 +115,38 @@ describe("registry.sorted", function()
       return e.name
     end, registry.sorted())
     assert.same({ "first", "second" }, names)
+  end)
+end)
+
+describe("registry.refresh", function()
+  before_each(function()
+    registry.reset()
+  end)
+
+  it("calls refresh on every registration that has one", function()
+    local calls = {}
+    registry.register({
+      name = "a",
+      select = function() end,
+      refresh = function()
+        calls[#calls + 1] = "a"
+      end,
+    })
+    registry.register({
+      name = "b",
+      select = function() end,
+      refresh = function()
+        calls[#calls + 1] = "b"
+      end,
+    })
+    registry.refresh()
+    table.sort(calls)
+    assert.same({ "a", "b" }, calls)
+  end)
+
+  it("is a no-op for registrations without refresh", function()
+    registry.register({ name = "no-refresh", select = function() end })
+    registry.refresh()
   end)
 end)
 
