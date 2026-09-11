@@ -12,12 +12,10 @@ describe("c35 selector", function()
   local jobs
   local refreshes
   local notifications
+  local cached_paths
 
-  before_each(function()
-    jobs = {}
-    refreshes = 0
-    notifications = {}
-    c35.reset()
+  ---@param cache (fun(output: string): string)|nil
+  local function set_dependencies(cache)
     c35.set_dependencies({
       fingerprint = function()
         return "fingerprint"
@@ -28,9 +26,7 @@ describe("c35 selector", function()
       run = function(command, opts, callback)
         jobs[#jobs + 1] = { command = command, opts = opts, callback = callback }
       end,
-      cache = function(output)
-        return "file:///cache/" .. output .. ".json"
-      end,
+      cache = cache,
       refresh = function()
         refreshes = refreshes + 1
       end,
@@ -38,9 +34,23 @@ describe("c35 selector", function()
         notifications[#notifications + 1] = message
       end,
     })
+  end
+
+  before_each(function()
+    jobs = {}
+    refreshes = 0
+    notifications = {}
+    cached_paths = {}
+    c35.reset()
+    set_dependencies(function(output)
+      return "file:///cache/" .. output .. ".json"
+    end)
   end)
 
   after_each(function()
+    for _, path in ipairs(cached_paths) do
+      vim.fn.delete(path)
+    end
     c35.reset()
   end)
 
@@ -62,6 +72,30 @@ describe("c35 selector", function()
     assert.equals(1, refreshes)
     assert.equals("file:///cache/schema.json", c35.schema(ctx))
     assert.equals(1, #jobs)
+  end)
+
+  it("caches canonical valid UTF-8 JSON", function()
+    c35.reset()
+    set_dependencies()
+
+    local marker = vim.fn.tempname()
+    local output = ('{\n  "description": "\\u041f\\u0440\\u0438\\u0432\\u0435\\u0442",\n  "marker": %s\n}\n'):format(
+      vim.json.encode(marker)
+    )
+    local ctx = context("/arc/service/codegen-module.yaml")
+
+    c35.schema(ctx)
+    jobs[1].callback({ code = 0, stdout = output, stderr = "" })
+
+    local uri = assert(c35.schema(ctx))
+    local path = vim.uri_to_fname(uri)
+    cached_paths[#cached_paths + 1] = path
+    local bytes = vim.fn.readblob(path)
+
+    assert.same({ description = "Привет", marker = marker }, vim.json.decode(bytes))
+    assert.is_nil(bytes:find("\0", 1, true))
+    assert.is_not_nil(bytes:find("Привет", 1, true))
+    assert.equals(vim.fn.sha256(bytes) .. ".json", vim.fs.basename(path))
   end)
 
   it("does not start duplicate jobs for the same version", function()
